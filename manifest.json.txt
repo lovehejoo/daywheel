@@ -1,0 +1,8 @@
+{
+  "name": "하루 일과표",
+  "short_name": "일과표",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff"
+}

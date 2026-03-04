@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>하루 일과표 (요일 · 30분 · 색상 · 드래그 조정)</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --panel:#f5f6f8;
+    --line:#d9dde3;
+    --text:#15171a;
+    --muted:#667085;
+    --accent:#2563eb;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,"Noto Sans KR",sans-serif;
+  }
+  .wrap{max-width:1180px;margin:0 auto;padding:18px;display:grid;gap:14px;}
+  header{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start;}
+  h1{margin:0;font-size:18px;font-weight:800;}
+  .sub{margin-top:6px;color:var(--muted);font-size:13px;line-height:1.45}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;}
+  .layout{display:grid;grid-template-columns:1.1fr 0.9fr;gap:14px;}
+  @media (max-width:980px){.layout{grid-template-columns:1fr;}}
+
+  .days{display:flex;gap:8px;flex-wrap:wrap;}
+  .daybtn{
+    border:1px solid var(--line); background:#fff; color:var(--text);
+    padding:8px 10px; border-radius:12px; cursor:pointer; font-size:14px;
+  }
+  .daybtn.active{
+    border-color:rgba(37,99,235,.55);
+    box-shadow:0 0 0 2px rgba(37,99,235,.12) inset;
+  }
+  .daybtn:hover{background:#f0f2f5;}
+
+  .actions{display:flex;gap:8px;flex-wrap:wrap;}
+  button.action{
+    border:1px solid var(--line); background:#fff; color:var(--text);
+    padding:8px 10px; border-radius:12px; cursor:pointer; font-size:13px;
+  }
+  button.action:hover{background:#f0f2f5;}
+  button.danger{border-color:rgba(239,68,68,.45);}
+  button.danger:hover{background:rgba(239,68,68,.08);}
+  .fileInput{display:none;}
+
+  .wheelWrap{display:flex;justify-content:center;align-items:center;padding:10px 0;}
+  svg{width:100%;max-width:620px;height:auto;}
+  .outerHour{font-size:11px;fill:#374151;user-select:none;}
+  .grid path{fill:rgba(0,0,0,0.02);stroke:#e5e7eb;stroke-width:1;}
+  .block{cursor:grab;}
+  .block:active{cursor:grabbing;}
+  .block path{stroke:rgba(0,0,0,0.12);stroke-width:1;}
+  .block.selected path{stroke:#111827;stroke-width:2.4;}
+  .blockText{font-size:12px;fill:white;user-select:none;font-weight:700;}
+  .centerCircle{fill:#fff;stroke:#d1d5db;stroke-width:1;cursor:pointer;}
+  .centerTitle{font-size:14px;fill:#111827;font-weight:800;user-select:none;pointer-events:none;}
+  .centerSub{font-size:12px;fill:#4b5563;user-select:none;pointer-events:none;}
+  .centerNote{font-size:11px;fill:#6b7280;user-select:none;pointer-events:none;}
+
+  .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;}
+  .pill{
+    padding:6px 10px;border-radius:999px;background:#fff;border:1px solid var(--line);
+    font-size:12px;color:var(--muted);
+  }
+  .controls{display:grid;gap:10px;margin:10px 0 12px;padding:12px;border:1px solid var(--line);border-radius:14px;background:#fff;}
+  label{color:var(--muted);font-size:12px;}
+  select,input[type="color"]{
+    border:1px solid var(--line);border-radius:10px;background:#fff;
+    padding:7px 9px; font-size:14px;
+  }
+  textarea{
+    width:100%;min-height:130px;resize:vertical;border-radius:14px;border:1px solid var(--line);
+    background:#fff;color:var(--text);padding:12px;font-size:14px;line-height:1.55;outline:none;
+  }
+  textarea:focus{border-color:rgba(37,99,235,.6);box-shadow:0 0 0 2px rgba(37,99,235,.12);}
+  .hint{color:var(--muted);font-size:12px;line-height:1.45;margin-top:8px;}
+  .list{margin-top:12px;border-top:1px solid var(--line);padding-top:12px;display:grid;gap:8px;}
+  .item{
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:10px;
+    display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
+  }
+  .meta{color:var(--muted);font-size:12px;}
+  .title{font-size:13px;font-weight:750;}
+  .itemBtns{display:flex;gap:8px;flex-wrap:wrap;}
+  .item button{
+    border:1px solid var(--line);background:#fff;color:var(--text);
+    padding:7px 9px;border-radius:10px;cursor:pointer;font-size:12px;
+  }
+  .item button:hover{background:#f0f2f5;}
+
+  .toast{
+    position:fixed;left:50%;transform:translateX(-50%);bottom:16px;
+    background:rgba(17,24,39,.92);color:#fff;border-radius:12px;padding:10px 12px;
+    font-size:13px;opacity:0;pointer-events:none;transition:opacity .2s ease;
+  }
+  .toast.show{opacity:1;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>하루 일과표 · 요일 · 30분 · 색상 · 드래그 조정</h1>
+      <div class="sub">
+        블록 생성: 시작/끝(30분) + 내용 + 색상 → 생성.<br>
+        원형에서 블록 드래그: <b>몸통=이동</b>, <b>양 끝=늘림/줄임</b>. (겹치면 경계에서 멈춤)<br>
+        ✅ <b>가운데 원을 클릭하면 선택 해제</b> (다음 일정 입력할 때 편함)
+      </div>
+    </div>
+    <div class="actions">
+      <button class="action" id="btnExport">백업</button>
+      <button class="action" id="btnImport">복원</button>
+      <button class="action danger" id="btnResetDay">요일 초기화</button>
+      <button class="action danger" id="btnResetAll">전체 초기화</button>
+      <input class="fileInput" id="fileInput" type="file" accept="application/json"/>
+    </div>
+  </header>
+
+  <div class="card">
+    <div class="days" id="days"></div>
+  </div>
+
+  <div class="layout">
+    <div class="card">
+      <div class="wheelWrap">
+        <svg id="wheel" viewBox="0 0 620 620" aria-label="원형 일과표"></svg>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:10px;">
+        <div class="pill" id="pillDay">요일: -</div>
+        <div class="pill" id="pillSel">선택: 없음</div>
+        <div class="pill">저장: 자동</div>
+      </div>
+
+      <div class="controls">
+        <div class="row" style="justify-content:space-between;">
+          <div class="row">
+            <label>시작</label>
+            <select id="selStart"></select>
+            <label>끝</label>
+            <select id="selEnd"></select>
+            <label>색상</label>
+            <input type="color" id="selColor" value="#2563eb"/>
+          </div>
+          <div class="row">
+            <button class="action" id="btnAdd">블록 생성/덮어쓰기</button>
+            <button class="action danger" id="btnClear">선택 블록 삭제</button>
+          </div>
+        </div>
+        <div class="hint">
+          ※ 시작/끝 드롭다운은 <b>새 블록 입력용</b>이야. (선택 블록 시간은 드래그로 바꿔줘)
+        </div>
+      </div>
+
+      <textarea id="txt" placeholder="내용 (텍스트만)"></textarea>
+      <div class="hint">블록을 클릭하면 내용이 들어오고, 수정하면 즉시 반영돼.</div>
+
+      <div class="list" id="list">
+        <div class="meta">이 요일의 블록 목록</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(() => {
+  const DAYS = [
+    {key:"mon", label:"월"}, {key:"tue", label:"화"}, {key:"wed", label:"수"},
+    {key:"thu", label:"목"}, {key:"fri", label:"금"}, {key:"sat", label:"토"}, {key:"sun", label:"일"},
+  ];
+  const STORAGE_KEY = "daywheel_week_drag_v2";
+  const SLOTS = 48; // 30min
+  const cx=310, cy=310, outerR=245, innerR=125, labelR=285;
+
+  const DEFAULT = Object.fromEntries(DAYS.map(d => [d.key, []]));
+
+  const state = {
+    data: load(),
+    day: "mon",
+    selectedId: null,
+    drag: null,
+  };
+
+  const daysEl = document.getElementById("days");
+  const wheel = document.getElementById("wheel");
+  const pillDay = document.getElementById("pillDay");
+  const pillSel = document.getElementById("pillSel");
+  const selStart = document.getElementById("selStart");
+  const selEnd = document.getElementById("selEnd");
+  const selColor = document.getElementById("selColor");
+  const txt = document.getElementById("txt");
+  const list = document.getElementById("list");
+
+  const btnAdd = document.getElementById("btnAdd");
+  const btnClear = document.getElementById("btnClear");
+  const btnExport = document.getElementById("btnExport");
+  const btnImport = document.getElementById("btnImport");
+  const btnResetDay = document.getElementById("btnResetDay");
+  const btnResetAll = document.getElementById("btnResetAll");
+  const fileInput = document.getElementById("fileInput");
+  const toastEl = document.getElementById("toast");
+
+  let toastTimer=null;
+  function toast(msg){
+    toastEl.textContent = msg;
+    toastEl.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer=setTimeout(()=>toastEl.classList.remove("show"), 900);
+  }
+  function clone(x){ return JSON.parse(JSON.stringify(x)); }
+
+  function clampInt(v,min,max){
+    const n = Number(v);
+    if(!Number.isFinite(n)) return min;
+    return Math.max(min, Math.min(max, Math.trunc(n)));
+  }
+
+  function load(){
+    try{
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if(!raw) return clone(DEFAULT);
+      const parsed = JSON.parse(raw);
+      const out = clone(DEFAULT);
+      for(const d of DAYS){
+        const arr = parsed?.[d.key];
+        if(Array.isArray(arr)){
+          out[d.key] = arr
+            .map(b => ({
+              id: String(b?.id ?? crypto.randomUUID()),
+              start: clampInt(b?.start,0,SLOTS-1),
+              end: clampInt(b?.end,1,SLOTS),
+              text: String(b?.text ?? ""),
+              color: String(b?.color ?? "#2563eb")
+            }))
+            .filter(b => b.end > b.start)
+            .sort((a,b)=>a.start-b.start);
+        }
+      }
+      return out;
+    }catch{
+      return clone(DEFAULT);
+    }
+  }
+
+  function save(msg){
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
+    if(msg) toast(msg);
+  }
+
+  function dayLabel(k){ return DAYS.find(d=>d.key===k)?.label ?? k; }
+
+  function idxToTime(i){
+    const m=i*30;
+    const h=Math.floor(m/60), mm=m%60;
+    return `${String(h).padStart(2,"0")}:${String(mm).padStart(2,"0")}`;
+  }
+
+  function polar(r,a){ return {x: cx + r*Math.cos(a), y: cy + r*Math.sin(a)}; }
+
+  function wedgePath(a1,a2){
+    const p1=polar(outerR,a1), p2=polar(outerR,a2), p3=polar(innerR,a2), p4=polar(innerR,a1);
+    const large = (a2-a1) > Math.PI ? 1 : 0;
+    return `M ${p1.x} ${p1.y}
+      A ${outerR} ${outerR} 0 ${large} 1 ${p2.x} ${p2.y}
+      L ${p3.x} ${p3.y}
+      A ${innerR} ${innerR} 0 ${large} 0 ${p4.x} ${p4.y}
+      Z`;
+  }
+
+  function slotToAngle(idx){
+    return (-Math.PI/2) + (idx*(2*Math.PI/SLOTS));
+  }
+
+  function angleToSlot(angle){
+    let a = angle + Math.PI/2;
+    a = (a % (2*Math.PI) + (2*Math.PI)) % (2*Math.PI);
+    const idx = Math.round(a / (2*Math.PI/SLOTS));
+    return clampInt(idx, 0, SLOTS);
+  }
+
+  function pointerToAngle(evt){
+    const rect = wheel.getBoundingClientRect();
+    const x = (evt.clientX - rect.left) * (wheel.viewBox.baseVal.width / rect.width);
+    const y = (evt.clientY - rect.top) * (wheel.viewBox.baseVal.height / rect.height);
+    return Math.atan2(y - cy, x - cx);
+  }
+
+  function renderSelectors(){
+    selStart.innerHTML=""; selEnd.innerHTML="";
+    for(let i=0;i<SLOTS;i++){
+      const o=document.createElement("option");
+      o.value=String(i); o.textContent=idxToTime(i);
+      selStart.appendChild(o);
+    }
+    for(let i=1;i<=SLOTS;i++){
+      const o=document.createElement("option");
+      o.value=String(i); o.textContent=(i===SLOTS)?"24:00":idxToTime(i);
+      selEnd.appendChild(o);
+    }
+    selStart.value="18"; selEnd.value="20";
+  }
+
+  function renderDays(){
+    daysEl.innerHTML="";
+    for(const d of DAYS){
+      const b=document.createElement("button");
+      b.className="daybtn"+(d.key===state.day?" active":"");
+      b.textContent=d.label;
+      b.addEventListener("click", ()=>{
+        state.day=d.key;
+        state.selectedId=null;
+        txt.value="";
+        updatePills();
+        renderAll();
+      });
+      daysEl.appendChild(b);
+    }
+    pillDay.textContent = `요일: ${dayLabel(state.day)}`;
+  }
+
+  function getBlocks(){
+    return state.data[state.day].slice().sort((a,b)=>a.start-b.start);
+  }
+
+  function getSelected(){
+    if(!state.selectedId) return null;
+    return state.data[state.day].find(b=>b.id===state.selectedId) ?? null;
+  }
+
+  function updatePills(){
+    pillDay.textContent = `요일: ${dayLabel(state.day)}`;
+    const b = getSelected();
+    pillSel.textContent = b
+      ? `선택: ${idxToTime(b.start)}~${b.end===SLOTS?"24:00":idxToTime(b.end)}`
+      : "선택: 없음";
+  }
+
+  function addOrOverwrite(start, end, text, color){
+    start = clampInt(start,0,SLOTS-1);
+    end = clampInt(end,1,SLOTS);
+    if(end <= start) return;
+
+    const blocks = getBlocks();
+    const kept = [];
+
+    for(const b of blocks){
+      if(b.end <= start || b.start >= end){
+        kept.push(b);
+        continue;
+      }
+      if(b.start < start) kept.push({...b, end:start});
+      if(b.end > end) kept.push({...b, start:end});
+    }
+
+    const id = crypto.randomUUID();
+    kept.push({id, start, end, text, color});
+    kept.sort((a,b)=>a.start-b.start);
+
+    // merge adjacent identical
+    const merged=[];
+    for(const b of kept){
+      const last = merged[merged.length-1];
+      if(last && last.end===b.start && last.text===b.text && last.color===b.color){
+        last.end = b.end;
+      }else merged.push(b);
+    }
+
+    state.data[state.day] = merged;
+    state.selectedId = id;
+    save("블록 생성 완료");
+    updatePills();
+    renderAll();
+  }
+
+  function deleteSelected(){
+    const b = getSelected();
+    if(!b){ toast("선택된 블록이 없어"); return; }
+    state.data[state.day] = getBlocks().filter(x=>x.id!==b.id);
+    state.selectedId = null;
+    txt.value = "";
+    save("삭제됨");
+    updatePills();
+    renderAll();
+  }
+
+  function selectBlock(id){
+    state.selectedId = id;
+    const b = getSelected();
+    if(b){
+      // 참고용으로만 채움 (드롭다운 변경이 블록 시간을 바꾸지 않게 해둠)
+      selStart.value = String(b.start);
+      selEnd.value = String(b.end);
+      selColor.value = b.color;
+      txt.value = b.text;
+    }
+    updatePills();
+    renderAll(false);
+  }
+
+  function renderWheel(){
+    wheel.innerHTML="";
+
+    // outer hour numbers (boundary): 0 top, 12 bottom
+    for(let h=0; h<24; h++){
+      const ang = (-Math.PI/2) + (h*(2*Math.PI/24));
+      const pos = polar(labelR, ang);
+      const t = document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x", pos.x);
+      t.setAttribute("y", pos.y);
+      t.setAttribute("text-anchor", "middle");
+      t.setAttribute("dominant-baseline", "middle");
+      t.setAttribute("class", "outerHour");
+      t.textContent = String(h);
+      wheel.appendChild(t);
+    }
+
+    // grid
+    for(let i=0;i<SLOTS;i++){
+      const a1=slotToAngle(i), a2=slotToAngle(i+1);
+      const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+      g.setAttribute("class","grid");
+      const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d", wedgePath(a1,a2));
+      g.appendChild(p);
+      wheel.appendChild(g);
+    }
+
+    // blocks
+    const blocks = getBlocks();
+    for(const b of blocks){
+      const a1=slotToAngle(b.start), a2=slotToAngle(b.end);
+      const mid=(a1+a2)/2;
+
+      const g=document.createElementNS("http://www.w3.org/2000/svg","g");
+      g.classList.add("block");
+      if(b.id===state.selectedId) g.classList.add("selected");
+      g.dataset.id=b.id;
+
+      const p=document.createElementNS("http://www.w3.org/2000/svg","path");
+      p.setAttribute("d", wedgePath(a1,a2));
+      p.setAttribute("fill", b.color);
+      g.appendChild(p);
+
+      const pos = polar((outerR+innerR)/2, mid);
+      const t=document.createElementNS("http://www.w3.org/2000/svg","text");
+      t.setAttribute("x", pos.x);
+      t.setAttribute("y", pos.y);
+      t.setAttribute("text-anchor","middle");
+      t.setAttribute("dominant-baseline","middle");
+      t.setAttribute("class","blockText");
+      t.textContent = b.text.trim() ? b.text.trim().slice(0,10) : "";
+      g.appendChild(t);
+
+      g.addEventListener("pointerdown", (evt)=>{
+        evt.preventDefault();
+        wheel.setPointerCapture(evt.pointerId);
+        selectBlock(b.id);
+
+        const ang = pointerToAngle(evt);
+        const idx = angleToSlot(ang);
+
+        const nearStart = Math.abs(idx - b.start) <= 1;
+        const nearEnd = Math.abs(idx - b.end) <= 1;
+        let mode = "move";
+        if(nearStart && !nearEnd) mode = "resizeStart";
+        else if(nearEnd && !nearStart) mode = "resizeEnd";
+
+        state.drag = {
+          mode,
+          id: b.id,
+          baseStart: b.start,
+          baseEnd: b.end,
+          pointerBaseIdx: idx,
+          duration: b.end - b.start
+        };
+      });
+
+      wheel.appendChild(g);
+    }
+
+    // center circle (click to clear selection)
+    const circle=document.createElementNS("http://www.w3.org/2000/svg","circle");
+    circle.setAttribute("cx", cx);
+    circle.setAttribute("cy", cy);
+    circle.setAttribute("r", 92);
+    circle.setAttribute("class","centerCircle");
+    circle.addEventListener("click", ()=>{
+      state.selectedId = null;
+      updatePills();
+      renderAll(false);
+    });
+    wheel.appendChild(circle);
+
+    const sel = getSelected();
+    const title = document.createElementNS("http://www.w3.org/2000/svg","text");
+    title.setAttribute("x", cx); title.setAttribute("y", cy-16);
+    title.setAttribute("text-anchor","middle");
+    title.setAttribute("dominant-baseline","middle");
+    title.setAttribute("class","centerTitle");
+
+    const sub = document.createElementNS("http://www.w3.org/2000/svg","text");
+    sub.setAttribute("x", cx); sub.setAttribute("y", cy+8);
+    sub.setAttribute("text-anchor","middle");
+    sub.setAttribute("dominant-baseline","middle");
+    sub.setAttribute("class","centerSub");
+
+    const note = document.createElementNS("http://www.w3.org/2000/svg","text");
+    note.setAttribute("x", cx); note.setAttribute("y", cy+30);
+    note.setAttribute("text-anchor","middle");
+    note.setAttribute("dominant-baseline","middle");
+    note.setAttribute("class","centerNote");
+
+    if(sel){
+      title.textContent = `${idxToTime(sel.start)} ~ ${sel.end===SLOTS?"24:00":idxToTime(sel.end)}`;
+      const tt = sel.text.trim();
+      sub.textContent = tt ? (tt.slice(0,22) + (tt.length>22?"…":"")) : "(내용 없음)";
+      note.textContent = "중앙 클릭=선택 해제";
+    }else{
+      title.textContent = dayLabel(state.day);
+      sub.textContent = "새 블록을 입력해줘";
+      note.textContent = "몸통=이동 · 끝=늘림/줄임";
+    }
+
+    wheel.appendChild(title);
+    wheel.appendChild(sub);
+    wheel.appendChild(note);
+  }
+
+  wheel.addEventListener("pointermove", (evt)=>{
+    if(!state.drag) return;
+    evt.preventDefault();
+    const drag = state.drag;
+    const b = state.data[state.day].find(x=>x.id===drag.id);
+    if(!b) return;
+
+    const ang = pointerToAngle(evt);
+    let idx = angleToSlot(ang);
+
+    const others = getBlocks().filter(x=>x.id!==b.id);
+
+    function overlaps(ns, ne){
+      return others.some(o => !(o.end <= ns || o.start >= ne));
+    }
+
+    if(drag.mode==="move"){
+      const delta = idx - drag.pointerBaseIdx;
+      let ns = drag.baseStart + delta;
+      let ne = ns + drag.duration;
+
+      if(ns < 0){ ns = 0; ne = ns + drag.duration; }
+      if(ne > SLOTS){ ne = SLOTS; ns = ne - drag.duration; }
+
+      // clamp against neighbors by stepping until no overlap (small because 30m steps)
+      while(overlaps(ns,ne) && ns < SLOTS){
+        if(delta >= 0){ ns += 1; ne += 1; if(ne>SLOTS){ ne=SLOTS; ns=ne-drag.duration; break; } }
+        else { ns -= 1; ne -= 1; if(ns<0){ ns=0; ne=ns+drag.duration; break; } }
+      }
+
+      b.start=ns; b.end=ne;
+    }
+
+    if(drag.mode==="resizeStart"){
+      let ns = clampInt(idx, 0, drag.baseEnd-1);
+      let ne = drag.baseEnd;
+      // clamp to avoid overlap
+      while(overlaps(ns,ne) && ns < ne-1) ns += 1;
+      b.start=ns; b.end=ne;
+    }
+
+    if(drag.mode==="resizeEnd"){
+      let ns = drag.baseStart;
+      let ne = clampInt(idx, ns+1, SLOTS);
+      while(overlaps(ns,ne) && ne > ns+1) ne -= 1;
+      b.start=ns; b.end=ne;
+    }
+
+    state.data[state.day].sort((a,b)=>a.start-b.start);
+    updatePills();
+    renderAll(false);
+  });
+
+  wheel.addEventListener("pointerup", (evt)=>{
+    if(!state.drag) return;
+    evt.preventDefault();
+    state.drag = null;
+
+    // merge adjacent identical after drag
+    const blocks = getBlocks();
+    const merged=[];
+    for(const b of blocks){
+      const last = merged[merged.length-1];
+      if(last && last.end===b.start && last.text===b.text && last.color===b.color){
+        last.end = b.end;
+      }else merged.push(b);
+    }
+    state.data[state.day] = merged;
+    save("시간 조정됨");
+    renderAll(false);
+  });
+
+  function escapeHtml(s){
+    return String(s).replaceAll("&","&amp;").replaceAll("<","&lt;").replaceAll(">","&gt;")
+      .replaceAll('"',"&quot;").replaceAll("'","&#039;");
+  }
+
+  function renderList(){
+    const blocks = getBlocks();
+    let html = `<div class="meta">이 요일의 블록 목록</div>`;
+
+    if(blocks.length===0){
+      html += `<div class="hint">아직 블록이 없어. 시작/끝/색상/내용 넣고 생성해봐.</div>`;
+      list.innerHTML = html;
+      return;
+    }
+
+    for(const b of blocks){
+      const range = `${idxToTime(b.start)} ~ ${b.end===SLOTS?"24:00":idxToTime(b.end)}`;
+      const title = b.text.trim() ? b.text.trim() : "(내용 없음)";
+      html += `
+        <div class="item">
+          <div>
+            <div class="meta">${range}</div>
+            <div class="title" style="display:flex;align-items:center;gap:8px;">
+              <span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${b.color};border:1px solid rgba(0,0,0,.15)"></span>
+              ${escapeHtml(title)}
+            </div>
+          </div>
+          <div class="itemBtns">
+            <button data-act="sel" data-id="${b.id}">선택</button>
+            <button data-act="del" data-id="${b.id}">삭제</button>
+          </div>
+        </div>
+      `;
+    }
+    list.innerHTML = html;
+
+    list.querySelectorAll("button[data-act]").forEach(btn=>{
+      btn.addEventListener("click", ()=>{
+        const act = btn.dataset.act;
+        const id = btn.dataset.id;
+        if(act==="sel"){
+          selectBlock(id);
+        }else{
+          state.data[state.day] = getBlocks().filter(x=>x.id!==id);
+          if(state.selectedId===id){ state.selectedId=null; }
+          save("삭제됨");
+          updatePills();
+          renderAll(false);
+        }
+      });
+    });
+  }
+
+  function renderAll(needToast=false){
+    renderWheel();
+    renderList();
+  }
+
+  // ✅ 핵심 수정: selStart/selEnd 변경이 "선택 블록"을 건드리지 않게 함
+  // (새 블록 입력만을 위해 값만 바뀌도록 놔둠)
+
+  // create
+  btnAdd.addEventListener("click", ()=>{
+    const s = Number(selStart.value);
+    const e = Number(selEnd.value);
+    const text = (txt.value || "").trim();
+    const color = selColor.value || "#2563eb";
+
+    if(!Number.isFinite(s) || !Number.isFinite(e) || e<=s){
+      toast("시간 범위 확인(끝이 시작보다 뒤)");
+      return;
+    }
+    if(!text){
+      toast("내용 입력");
+      return;
+    }
+    addOrOverwrite(s,e,text,color);
+  });
+
+  btnClear.addEventListener("click", deleteSelected);
+
+  // live edit text/color for selected (내용/색상만)
+  let editTimer=null;
+  txt.addEventListener("input", ()=>{
+    const b = getSelected();
+    if(!b) return;
+    b.text = txt.value;
+    clearTimeout(editTimer);
+    editTimer=setTimeout(()=>{
+      save("수정됨");
+      renderAll(false);
+    }, 250);
+  });
+
+  selColor.addEventListener("input", ()=>{
+    const b = getSelected();
+    if(!b) return;
+    b.color = selColor.value;
+    save("색상 변경");
+    renderAll(false);
+  });
+
+  // backup/restore
+  btnExport.addEventListener("click", ()=>{
+    const blob = new Blob([JSON.stringify(state.data, null, 2)], {type:"application/json"});
+    const url = URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const stamp = new Date().toISOString().slice(0,10);
+    a.href=url; a.download=`daywheel_backup_${stamp}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+    toast("백업 다운로드");
+  });
+
+  btnImport.addEventListener("click", ()=>fileInput.click());
+  fileInput.addEventListener("change", async ()=>{
+    const f=fileInput.files?.[0];
+    if(!f) return;
+    try{
+      const text = await f.text();
+      const parsed = JSON.parse(text);
+      const out = clone(DEFAULT);
+      for(const d of DAYS){
+        const arr = parsed?.[d.key];
+        if(Array.isArray(arr)){
+          out[d.key] = arr
+            .map(b => ({
+              id: String(b?.id ?? crypto.randomUUID()),
+              start: clampInt(b?.start,0,SLOTS-1),
+              end: clampInt(b?.end,1,SLOTS),
+              text: String(b?.text ?? ""),
+              color: String(b?.color ?? "#2563eb")
+            }))
+            .filter(b=>b.end>b.start)
+            .sort((a,b)=>a.start-b.start);
+        }
+      }
+      state.data = out;
+      state.selectedId = null;
+      txt.value="";
+      save("복원 완료");
+      updatePills();
+      renderAll(false);
+    }catch{
+      toast("복원 실패(JSON 확인)");
+    }finally{
+      fileInput.value="";
+    }
+  });
+
+  btnResetDay.addEventListener("click", ()=>{
+    if(!confirm(`선택 요일(${dayLabel(state.day)})을 전부 지울까?`)) return;
+    state.data[state.day] = [];
+    state.selectedId = null;
+    txt.value = "";
+    save("요일 초기화");
+    updatePills();
+    renderAll(false);
+  });
+
+  btnResetAll.addEventListener("click", ()=>{
+    if(!confirm("전체(월~일) 전부 지울까?")) return;
+    state.data = clone(DEFAULT);
+    state.selectedId = null;
+    txt.value = "";
+    save("전체 초기화");
+    updatePills();
+    renderAll(false);
+  });
+
+  function init(){
+    // selectors
+    selStart.innerHTML=""; selEnd.innerHTML="";
+    for(let i=0;i<SLOTS;i++){
+      const o=document.createElement("option");
+      o.value=String(i); o.textContent=idxToTime(i);
+      selStart.appendChild(o);
+    }
+    for(let i=1;i<=SLOTS;i++){
+      const o=document.createElement("option");
+      o.value=String(i); o.textContent=(i===SLOTS)?"24:00":idxToTime(i);
+      selEnd.appendChild(o);
+    }
+    selStart.value="18"; selEnd.value="20";
+
+    renderDays();
+    updatePills();
+    renderAll(false);
+  }
+  init();
+})();
+</script>
+</body>
+</html>
